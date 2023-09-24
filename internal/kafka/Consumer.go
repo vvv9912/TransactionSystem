@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var (
+var ( //todo cfg
 	bootstrapservers = "localhost"
 	groupid          = "myGroup"
 	autooffsetreset  = "earliest"
@@ -27,15 +27,6 @@ type EventsStorager interface {
 type UsersStorager interface {
 }
 
-// status = 0
-// 1 -успешна для добавления
-// 2 -  усппешна для снятия
-// 3 - не хватает денег
-const (
-	StateAdddb string = "Add"
-	StateSubdb        = "Sub"
-)
-
 type Cacher interface {
 	NewTranscation(t model.Transactions) error
 	GetTransaction(key string) (model.Transactions, bool)
@@ -45,13 +36,14 @@ type Consumer struct {
 	EventsStorage EventsStorager
 	UsersStorage  UsersStorager
 	C             *kafka.Consumer
+	Topic         string
 }
 
-func NewConsumer(eventstorager EventsStorager, usersStorager UsersStorager) *Consumer {
+func NewConsumer(eventstorager EventsStorager, usersStorager UsersStorager, topic string) *Consumer {
 	//&
 
 	kfk, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers": bootstrapservers,
+		"bootstrap.servers": bootstrapservers, //todo cfg
 		"group.id":          groupid,
 		"auto.offset.reset": autooffsetreset,
 	})
@@ -63,11 +55,12 @@ func NewConsumer(eventstorager EventsStorager, usersStorager UsersStorager) *Con
 				"method":  "NewConsumer",
 			}).Fatalln(err)
 	}
-	return &Consumer{C: kfk, EventsStorage: eventstorager, UsersStorage: usersStorager}
+	return &Consumer{C: kfk, EventsStorage: eventstorager, UsersStorage: usersStorager, Topic: topic}
 }
 
 func (C *Consumer) ConsumerStart(ctx context.Context) error {
-	err := C.C.SubscribeTopics([]string{"Add", "Sub"}, nil)
+	//err := C.C.SubscribeTopics([]string{"Add", "Sub"}, nil) //todo cfg
+	err := C.C.Subscribe(C.Topic, nil)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"func": "ConsumerStart"}).Fatalf("Add to topics: %v", err)
 		return err

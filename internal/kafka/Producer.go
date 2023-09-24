@@ -10,8 +10,8 @@ type Producer struct {
 	Topic string
 }
 
-func NewProducer() *Producer {
-	kfk, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost"})
+func NewProducer(topic string) *Producer {
+	kfkProducer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost"}) //todo cfg
 
 	if err != nil {
 		logrus.WithFields(
@@ -22,7 +22,7 @@ func NewProducer() *Producer {
 				"method":  "NewProducer",
 			}).Fatalln(err)
 	}
-	return &Producer{P: kfk}
+	return &Producer{P: kfkProducer, Topic: topic}
 }
 
 func (p *Producer) Produce(Value []byte, Key []byte, numPartition int32) error {
