@@ -27,20 +27,16 @@ func main() {
 	}
 	defer db.Close()
 	var (
-		usersStorage = storage.NewUsersStorage(db) //подкл бд
+		usersStorage = storage.NewUsersStorage(db)
 		eventStorage = storage.NewEventStorage(db)
 		c            = cache2.NewCache()
-		notif        = notifier.NewNotifier(c, eventStorage, 10, constant.Topic_Events, time.Duration(time.Second))
+		n            = notifier.NewNotifier(c, eventStorage, 10, constant.Topic_Events, time.Duration(time.Second))
 		s            = server.NewServer(eventStorage, c, usersStorage)
-		//cache        = cache.New(cache.DefaultExpiration, 0)
-		//consumer     = kafka.NewConsumer(cache, usersStorage, transactionStorang)
-		//producer     = kafka.NewProducer()
 	)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	err = notif.StartNotifyCron(ctx)
+	err = n.StartNotifyCron(ctx)
 	if err != nil {
-
 		return
 	}
 	cons := kafka.NewConsumer(eventStorage, usersStorage, c, constant.Topic_Events)
