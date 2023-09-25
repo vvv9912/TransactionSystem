@@ -15,7 +15,7 @@ import (
 
 type EventsStorage interface {
 	GetNewEvents(ctx context.Context) ([]model.Transactions, error)
-	UpdateStatusEventByID(ctx context.Context, walletId int, status int) error
+	UpdateStatusEventByID(ctx context.Context, numTransaction string, status int) error
 }
 type Cacher interface {
 	NewTranscation(t model.Transactions) error
@@ -29,11 +29,12 @@ type Notifier struct {
 	Timer        time.Duration
 }
 
-func NewNotifier(cacher Cacher, eventsStorage EventsStorage, partitions int, topic string) *Notifier {
+func NewNotifier(cacher Cacher, eventsStorage EventsStorage, partitions int, topic string, timer time.Duration) *Notifier {
 	n := &Notifier{
 		Cacher:        cacher,
 		EventsStorage: eventsStorage,
 		Partitions:    partitions,
+		Timer:         timer,
 	}
 	producer := kafka.NewProducer(topic)
 	n.KafkaProduce = producer
@@ -43,7 +44,7 @@ func NewNotifier(cacher Cacher, eventsStorage EventsStorage, partitions int, top
 func (n *Notifier) NotifyPending(ctx context.Context) ([]model.Transactions, error) {
 	//тут считываем из бд и отправляем1
 	trans, err := n.GetNewEvents(ctx)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || len(trans) == 0 {
 		err = nil
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (n *Notifier) SendNotification(ctx context.Context, trans model.Transaction
 		return err
 	}
 	//updatedb status and kafka todo
-	err = n.UpdateStatusEventByID(ctx, trans.WalletID, constant.Status_SendKafka)
+	err = n.UpdateStatusEventByID(ctx, trans.NumberTransaction, constant.Status_SendKafka)
 	if err != nil {
 		logrus.WithFields(
 			logrus.Fields{
@@ -95,7 +96,7 @@ func (n *Notifier) SendNotification(ctx context.Context, trans model.Transaction
 		return err
 	}
 	//cache
-	err = n.UpdateTransaction(trans.NumberTransaction.String(), constant.Status_SendKafka)
+	err = n.UpdateTransaction(trans.NumberTransaction, constant.Status_SendKafka)
 	if err != nil {
 		logrus.WithFields(
 			logrus.Fields{

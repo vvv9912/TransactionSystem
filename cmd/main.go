@@ -15,9 +15,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
+
 	db, err := sqlx.Connect("postgres", config.Get().DatabaseDSN)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"func": "main"}).Fatalf("faild to connetct to database: %v", err)
@@ -28,8 +30,8 @@ func main() {
 		usersStorage = storage.NewUsersStorage(db) //подкл бд
 		eventStorage = storage.NewEventStorage(db)
 		c            = cache2.NewCache()
-		notif        = notifier.NewNotifier(c, eventStorage, 10, constant.Topic_Events)
-		s            = server.NewServer()
+		notif        = notifier.NewNotifier(c, eventStorage, 10, constant.Topic_Events, time.Duration(time.Second))
+		s            = server.NewServer(eventStorage, c, usersStorage)
 		//cache        = cache.New(cache.DefaultExpiration, 0)
 		//consumer     = kafka.NewConsumer(cache, usersStorage, transactionStorang)
 		//producer     = kafka.NewProducer()
@@ -41,7 +43,7 @@ func main() {
 
 		return
 	}
-	cons := kafka.NewConsumer(eventStorage, usersStorage, constant.Topic_Events)
+	cons := kafka.NewConsumer(eventStorage, usersStorage, c, constant.Topic_Events)
 	err = cons.ConsumerStart(ctx)
 	if err != nil {
 		return

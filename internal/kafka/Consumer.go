@@ -24,26 +24,30 @@ type EventsStorager interface {
 	//GetNewEvents(ctx context.Context) ([]model.Transactions, error)
 	//GetStatusEventByID(ctx context.Context) (int, error)
 	//UpdateStatusEventByID(ctx context.Context) error
+	UpdateStatusEventByID(ctx context.Context, numTransaction string, status int) error
 }
 type UsersStorager interface {
 	CheckId(ctx context.Context, WalletID int) (int, error)
 	AddUser(ctx context.Context, User model.Users) (int, error)
 	AddActualBalanceById(ctx context.Context, WalletID int, account float64) error
+	WithdrawById(ctx context.Context, WalletID int, account float64) error
 }
 
 type Cacher interface {
 	NewTranscation(t model.Transactions) error
 	GetTransaction(key string) (model.Transactions, bool)
+	UpdateTransaction(key string, status int) error
 }
 
 type Consumer struct {
 	EventsStorage EventsStorager
 	UsersStorage  UsersStorager
+	Cach          Cacher
 	C             *kafka.Consumer
 	Topic         string
 }
 
-func NewConsumer(eventstorager EventsStorager, usersStorager UsersStorager, topic string) *Consumer {
+func NewConsumer(eventstorager EventsStorager, usersStorager UsersStorager, Cach Cacher, topic string) *Consumer {
 	//&
 
 	kfk, err := kafka.NewConsumer(&kafka.ConfigMap{
@@ -59,7 +63,7 @@ func NewConsumer(eventstorager EventsStorager, usersStorager UsersStorager, topi
 				"method":  "NewConsumer",
 			}).Fatalln(err)
 	}
-	return &Consumer{C: kfk, EventsStorage: eventstorager, UsersStorage: usersStorager, Topic: topic}
+	return &Consumer{C: kfk, EventsStorage: eventstorager, UsersStorage: usersStorager, Topic: topic, Cach: Cach}
 }
 
 // ch chan *kafka.Message
@@ -145,8 +149,33 @@ func (C *Consumer) process(ctx context.Context, msg *kafka.Message) error {
 
 	return nil
 }
-
 func (C *Consumer) invoice(ctx context.Context, msg *kafka.Message) error {
+	numTransaction, err := C.invoiceTransaction(ctx, msg)
+	if err != nil {
+		err2 := C.Cach.UpdateTransaction(numTransaction, constant.Status_Error)
+		if err2 != nil {
+			logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "UpdateTransaction"}).Fatalln(err)
+		}
+		err2 = C.EventsStorage.UpdateStatusEventByID(ctx, numTransaction, constant.Status_Error)
+		if err2 != nil {
+			logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "UpdateStatusEventByID"}).Fatalln(err)
+		}
+		return err
+	}
+
+	err = C.Cach.UpdateTransaction(numTransaction, constant.Status_Success)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "UpdateTransaction"}).Fatalln(err)
+		return err
+	}
+	err = C.EventsStorage.UpdateStatusEventByID(ctx, numTransaction, constant.Status_Success)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "UpdateStatusEventByID"}).Fatalln(err)
+		return err
+	}
+	return nil
+}
+func (C *Consumer) invoiceTransaction(ctx context.Context, msg *kafka.Message) (string, error) {
 	var message model.Transactions
 	err := json.Unmarshal(msg.Value, &message)
 	if err != nil {
@@ -156,17 +185,18 @@ func (C *Consumer) invoice(ctx context.Context, msg *kafka.Message) error {
 				"func":    "invoice",
 				"method":  "json.Unmarshal(msg.Value, &message)",
 			}).Fatalln(err)
-		return err
+		return "", err
 	}
 	var transaction model.Invoice
 	switch message.TypeTransaction {
 	case constant.Type_Invoice:
-		err = json.Unmarshal([]byte(message.Data), &transaction)
+		data := []byte(message.Data)
+		err = json.Unmarshal(data, &transaction)
 		if err != nil {
-			return err
+			return "", err
 		}
 	default:
-		return errors.New("type not invoice message")
+		return "", errors.New("type not invoice message")
 	}
 	_, err = C.UsersStorage.CheckId(ctx, message.WalletID)
 	if err != nil {
@@ -181,24 +211,49 @@ func (C *Consumer) invoice(ctx context.Context, msg *kafka.Message) error {
 				FrozenBalance: 0,
 			})
 			if err != nil {
-				return err
+				return "", err
 			}
 			logrus.WithField("Add user with id:", id)
+		} else {
+			logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "CheckId"}).Fatalln(err)
+			return "", err
 		}
-	} else {
-		logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "CheckId"}).Fatalln(err)
-		return err
 	}
 	err = C.UsersStorage.AddActualBalanceById(ctx, message.WalletID, transaction.AmountMoney)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "AddAccountById"}).Fatalln(err)
-		return err
+		return "", err
 	}
-	//todo cache
-	//todo transaction
-	return nil
+	return message.NumberTransaction, nil
 }
 func (C *Consumer) withdraw(ctx context.Context, msg *kafka.Message) error {
+	numTransaction, err := C.withdrawTransaction(ctx, msg)
+	if err != nil {
+		err2 := C.Cach.UpdateTransaction(numTransaction, constant.Status_Error)
+		if err2 != nil {
+			logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "UpdateTransaction"}).Fatalln(err)
+
+		}
+		err2 = C.EventsStorage.UpdateStatusEventByID(ctx, numTransaction, constant.Status_Error)
+		if err2 != nil {
+			logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "UpdateStatusEventByID"}).Fatalln(err)
+		}
+		return err
+	}
+
+	err = C.Cach.UpdateTransaction(numTransaction, constant.Status_Success)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "UpdateTransaction"}).Fatalln(err)
+		return err
+	}
+	err = C.EventsStorage.UpdateStatusEventByID(ctx, numTransaction, constant.Status_Success)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "UpdateStatusEventByID"}).Fatalln(err)
+		return err
+	}
+	return nil
+}
+func (C *Consumer) withdrawTransaction(ctx context.Context, msg *kafka.Message) (string, error) {
 	var message model.Transactions
 	err := json.Unmarshal(msg.Value, &message)
 	if err != nil {
@@ -208,7 +263,43 @@ func (C *Consumer) withdraw(ctx context.Context, msg *kafka.Message) error {
 				"func":    "withdraw",
 				"method":  "json.Unmarshal(msg.Value, &message)",
 			}).Fatalln(err)
-		return err
+		return "", err
 	}
-	return nil
+	var transaction model.Withdraw
+	switch message.TypeTransaction {
+	case constant.Type_Withdraw:
+		data := []byte(message.Data)
+		err = json.Unmarshal(data, &transaction)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", errors.New("type not invoice message")
+	}
+	_, err = C.UsersStorage.CheckId(ctx, message.WalletID)
+	if err != nil {
+		logrus.WithFields(
+			logrus.Fields{
+				"package": "Consumer",
+				"func":    "withdraw",
+				"method":  "UsersStorage.CheckId(ctx, message.WalletID)",
+			}).Fatalln(err)
+		return "", err
+	}
+	err = C.UsersStorage.WithdrawById(ctx, message.WalletID, transaction.AmountMoney)
+	if err != nil {
+		if err.Error() == constant.ErrAccountSmall {
+			err = nil
+		} else {
+
+			logrus.WithFields(
+				logrus.Fields{
+					"package": "Consumer",
+					"func":    "withdraw",
+					"method":  "UsersStorage.WithdrawById(ctx, message.WalletID, transaction.AmountMoney)",
+				}).Fatalln(err)
+			return "", err
+		}
+	}
+	return message.NumberTransaction, nil
 }

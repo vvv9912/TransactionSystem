@@ -12,7 +12,7 @@ type Cache struct {
 }
 
 func NewCache() *Cache {
-	var c map[string]model.Transactions
+	c := make(map[string]model.Transactions)
 	return &Cache{c: c}
 }
 func (c *Cache) GetTransaction(key string) (model.Transactions, bool) {
@@ -27,11 +27,11 @@ func (c *Cache) GetTransaction(key string) (model.Transactions, bool) {
 func (c *Cache) NewTranscation(t model.Transactions) error {
 	c.m.Lock()
 	defer c.m.Unlock()
-	_, found := c.c[t.NumberTransaction.String()]
+	_, found := c.c[t.NumberTransaction]
 	if found {
 		return errors.New("Transaction exists")
 	}
-	c.c[t.NumberTransaction.String()] = t
+	c.c[t.NumberTransaction] = t
 	return nil
 }
 func (c *Cache) DeleteTranscation(key string) error {
@@ -42,8 +42,6 @@ func (c *Cache) DeleteTranscation(key string) error {
 	return nil
 }
 func (c *Cache) UpdateTransaction(key string, status int) error {
-	c.m.Lock()
-	defer c.m.Unlock()
 	value, found := c.GetTransaction(key)
 	if !found {
 		return errors.New("Transaction not found")

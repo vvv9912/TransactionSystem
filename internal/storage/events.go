@@ -4,6 +4,7 @@ import (
 	"TransactionSystem/internal/model"
 	"context"
 	"github.com/jmoiron/sqlx"
+	"log"
 )
 
 type PostgresEvent struct {
@@ -14,17 +15,18 @@ func NewEventStorage(db *sqlx.DB) *PostgresEvent {
 	return &PostgresEvent{db: db}
 }
 
-func (db *PostgresEvent) AddEvent(ctx context.Context, t model.Transactions) (int, error) {
+func (db *PostgresEvent) AddEvent(ctx context.Context, t model.Transactions) error {
 	conn, err := db.db.Connx(ctx)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer conn.Close()
 	//
-	var id int
-	row := conn.QueryRowxContext(
+	//var id int
+
+	rows, err := conn.QueryContext(
 		ctx,
-		"INSERT INTO events (num_transaction, wallet_id, status, type_transaction, data, created_at) VALUES ($1, $2,$3, $4,$5,&6) RETURNING id",
+		"INSERT INTO events (num_transaction, wallet_id, status, type_transaction, data, created_at) VALUES ($1, $2,$3, $4,$5,$6) ",
 		t.NumberTransaction,
 		t.WalletID,
 		t.Status,
@@ -32,43 +34,60 @@ func (db *PostgresEvent) AddEvent(ctx context.Context, t model.Transactions) (in
 		t.Data,
 		t.CreatedAt,
 	)
-	if err := row.Err(); err != nil {
-		return 0, err
+	defer rows.Close()
+	if err != nil {
+		log.Print(err)
+		return err
 	}
 
-	if err := row.Scan(&id); err != nil {
-		return 0, err
-	}
-	return id, nil
+	return nil
 }
 func (db *PostgresEvent) GetEventByID(ctx context.Context) {
 	//По времени сортировка
 }
 func (db *PostgresEvent) GetNewEvents(ctx context.Context) ([]model.Transactions, error) {
 	//По времени сортировка, по сттусу
+
 	conn, err := db.db.Connx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	status := 0
+	var status int
+	status = 0
+
 	defer conn.Close()
 	var trans []model.Transactions
-	if err := conn.GetContext(ctx, &trans, `SELECT (num_transaction, wallet_id, status, type_transaction, data, created_at) FROM events WHERE status= $1`, status); err != nil {
+
+	if err := conn.SelectContext(ctx, &trans, `SELECT 
+       num_transaction AS num_transaction, 
+       wallet_id AS wallet_id, 
+       status AS status, 
+       type_transaction AS type_transaction, 
+       data AS data,
+       created_at AS created_at
+		FROM events WHERE status= $1`, status); err != nil {
 		return nil, err
 	}
+	//row := conn.QueryRowxContext(ctx,
+	//	)
+
 	return trans, err
 }
+
 func (db *PostgresEvent) GetStatusEventByID(ctx context.Context) {
 
 }
-func (db *PostgresEvent) UpdateStatusEventByID(ctx context.Context, walletId int, status int) error {
+func (db *PostgresEvent) UpdateStatusEventByID(ctx context.Context, numTransaction string, status int) error {
 	conn, err := db.db.Connx(ctx)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	_, err = conn.ExecContext(ctx, `UPDATE events SET status = $1 WHERE wallet_id = $2`, status, walletId)
-	return err
+	_, err = conn.ExecContext(ctx, `UPDATE events SET status = $1 WHERE num_transaction = $2`, status, numTransaction)
+	if err != nil {
+		log.Print(err)
+		return err
+	}
 
 	return nil
 }

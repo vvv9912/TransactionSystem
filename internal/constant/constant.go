@@ -14,8 +14,8 @@ const (
 const (
 	Status_Create    = 0
 	Status_SendKafka = 1
-	Status_GetDB     = 2
-	Status_Processed = 3
+	Status_Success   = 2
+	Status_Error     = 3
 )
 const (
 	Type_Invoice  = 0
@@ -25,3 +25,4 @@ const (
 const (
 	Topic_Events = "events"
 )
+const ErrAccountSmall = "account >ActualBalance"
