@@ -65,7 +65,6 @@ func NewConsumer(eventstorager EventsStorager, usersStorager UsersStorager, Cach
 
 // ch chan *kafka.Message
 func (C *Consumer) ConsumerStart(ctx context.Context) error {
-	//err := C.C.SubscribeTopics([]string{"Add", "Sub"}, nil) //todo cfg
 	err := C.C.Subscribe(C.Topic, nil)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"func": "ConsumerStart"}).Fatalf("Add to topics: %v", err)
