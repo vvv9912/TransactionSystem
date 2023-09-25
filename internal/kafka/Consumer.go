@@ -21,9 +21,6 @@ var ( //todo cfg
 )
 
 type EventsStorager interface {
-	//GetNewEvents(ctx context.Context) ([]model.Transactions, error)
-	//GetStatusEventByID(ctx context.Context) (int, error)
-	//UpdateStatusEventByID(ctx context.Context) error
 	UpdateStatusEventByID(ctx context.Context, numTransaction string, status int) error
 }
 type UsersStorager interface {
