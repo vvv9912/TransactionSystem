@@ -5,7 +5,9 @@ import (
 	"TransactionSystem/internal/kafka"
 	"TransactionSystem/internal/model"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"github.com/sirupsen/logrus"
 	"strconv"
 	"time"
@@ -13,7 +15,7 @@ import (
 
 type EventsStorage interface {
 	GetNewEvents(ctx context.Context) ([]model.Transactions, error)
-	UpdateStatusEventByID(ctx context.Context) error
+	UpdateStatusEventByID(ctx context.Context, walletId int, status int) error
 }
 type Cacher interface {
 	NewTranscation(t model.Transactions) error
@@ -27,27 +29,30 @@ type Notifier struct {
 	Timer        time.Duration
 }
 
-func NewNotifier(cacher Cacher, eventsStorage EventsStorage, partitions int) *Notifier {
+func NewNotifier(cacher Cacher, eventsStorage EventsStorage, partitions int, topic string) *Notifier {
 	n := &Notifier{
 		Cacher:        cacher,
 		EventsStorage: eventsStorage,
 		Partitions:    partitions,
 	}
-	producer := kafka.NewProducer()
+	producer := kafka.NewProducer(topic)
 	n.KafkaProduce = producer
-	n.KafkaProduce.Topic = constant.Topic_Events
+	//n.KafkaProduce.Topic = constant.Topic_Events
 	return n
 }
 func (n *Notifier) NotifyPending(ctx context.Context) ([]model.Transactions, error) {
 	//тут считываем из бд и отправляем1
 	trans, err := n.GetNewEvents(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+		return nil, err
+	}
 	if err != nil {
 		logrus.WithFields(
 			logrus.Fields{
-
 				"package": "notifier",
 				"func":    "NotifyPending",
-				"method":  "GetNotifyTrans",
+				"method":  "GetNewEvents",
 			}).Fatalln(err)
 		return nil, err
 	}
@@ -79,7 +84,17 @@ func (n *Notifier) SendNotification(ctx context.Context, trans model.Transaction
 		return err
 	}
 	//updatedb status and kafka todo
-	err = n.UpdateStatusEventByID(ctx)
+	err = n.UpdateStatusEventByID(ctx, trans.WalletID, constant.Status_SendKafka)
+	if err != nil {
+		logrus.WithFields(
+			logrus.Fields{
+				"package": "notifier",
+				"func":    "SendNotification",
+				"method":  "UpdateStatusEventByID",
+			}).Fatalln(err)
+		return err
+	}
+	//cache
 	err = n.UpdateTransaction(trans.NumberTransaction.String(), constant.Status_SendKafka)
 	if err != nil {
 		logrus.WithFields(

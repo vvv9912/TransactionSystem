@@ -14,14 +14,14 @@ type PostgresUsers struct {
 func NewUsersStorage(db *sqlx.DB) *PostgresUsers {
 	return &PostgresUsers{db: db}
 }
-func (db *PostgresUsers) AddUser(ctx context.Context, User model.Users) (int64, error) {
+func (db *PostgresUsers) AddUser(ctx context.Context, User model.Users) (int, error) {
 	conn, err := db.db.Connx(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer conn.Close()
 	//
-	var id int64
+	var id int
 	row := conn.QueryRowxContext(
 		ctx,
 		"INSERT INTO users (WalletID, CurrencyСode,ActualBalance,FrozenBalance) VALUES ($1, $2,$3, $4) RETURNING id",
@@ -84,7 +84,7 @@ func (db *PostgresUsers) GetFrozenBalanceByID(ctx context.Context, WalletID int6
 	}
 	return balance, err
 }
-func (db *PostgresUsers) AddActualBalanceById(ctx context.Context, WalletID int64, account float64) error {
+func (db *PostgresUsers) AddActualBalanceById(ctx context.Context, WalletID int, account float64) error {
 	//db.Lock()
 	//defer db.Unlock()
 	conn, err := db.db.Connx(ctx)

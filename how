@@ -15,3 +15,6 @@ invoice/withdraw -> в эвентс (бд или кэш)
 1 Топик
 value = trans
 key = invoice/withdraw
+
+
+ goose postgres "host=localhost user=postgres database=postgres password=postgres sslmode=disable" up

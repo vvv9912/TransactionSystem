@@ -14,7 +14,7 @@ import (
 )
 
 type EventsStorage interface {
-	AddEvent(ctx context.Context)
+	AddEvent(ctx context.Context, t model.Transactions) (int, error)
 }
 type Cacher interface {
 	NewTranscation(t model.Transactions) error
@@ -82,7 +82,11 @@ func (m *MW) Invoice(next echo.HandlerFunc) echo.HandlerFunc {
 			logrus.WithFields(logrus.Fields{"func": "Add transaction to cache"}).Fatalf("%v", err)
 			return echo.NewHTTPError(http.StatusBadRequest, "Error")
 		}
-		m.AddEvent(ctxBD)
+		_, err = m.AddEvent(ctxBD, transaction)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"func": "AddEvent"}).Fatalf("%v", err)
+			return echo.NewHTTPError(http.StatusBadRequest, "Error")
+		}
 		err = next(ctx)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{"func": "InvoiceHandler"}).Fatalf("%v", err)

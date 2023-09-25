@@ -23,5 +23,5 @@ const (
 )
 
 const (
-	Topic_Events = "Events"
+	Topic_Events = "events"
 )

@@ -1,10 +1,11 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE events (
-    id serial primary key,
     num_transaction uuid NOT NULL,
     wallet_id int NOT NULL,
     status int not null ,
+    type_transaction int,
+    data text,
     CREATED_AT timestamp NOT NULL DEFAULT NOW()
 
 );

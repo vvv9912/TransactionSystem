@@ -4,6 +4,7 @@ import (
 	"TransactionSystem/internal/constant"
 	"TransactionSystem/internal/model"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,11 +21,14 @@ var ( //todo cfg
 )
 
 type EventsStorager interface {
-	GetNewEvents(ctx context.Context) ([]model.Transactions, error)
-	GetStatusEventByID(ctx context.Context) (int, error)
-	UpdateStatusEventByID(ctx context.Context) error
+	//GetNewEvents(ctx context.Context) ([]model.Transactions, error)
+	//GetStatusEventByID(ctx context.Context) (int, error)
+	//UpdateStatusEventByID(ctx context.Context) error
 }
 type UsersStorager interface {
+	CheckId(ctx context.Context, WalletID int) (int, error)
+	AddUser(ctx context.Context, User model.Users) (int, error)
+	AddActualBalanceById(ctx context.Context, WalletID int, account float64) error
 }
 
 type Cacher interface {
@@ -58,6 +62,7 @@ func NewConsumer(eventstorager EventsStorager, usersStorager UsersStorager, topi
 	return &Consumer{C: kfk, EventsStorage: eventstorager, UsersStorage: usersStorager, Topic: topic}
 }
 
+// ch chan *kafka.Message
 func (C *Consumer) ConsumerStart(ctx context.Context) error {
 	//err := C.C.SubscribeTopics([]string{"Add", "Sub"}, nil) //todo cfg
 	err := C.C.Subscribe(C.Topic, nil)
@@ -70,7 +75,8 @@ func (C *Consumer) ConsumerStart(ctx context.Context) error {
 			msg, err := C.C.ReadMessage(time.Millisecond)
 			if err == nil {
 				go func() {
-					err = C.process(msg)
+					//ch <- msg
+					err = C.process(ctx, msg)
 					if err != nil {
 						logrus.WithFields(logrus.Fields{"func": "ConsumerStart"}).Fatalf("process: %v", err)
 						return
@@ -96,7 +102,7 @@ func (C *Consumer) ConsumerStart(ctx context.Context) error {
 	return nil
 
 }
-func (C *Consumer) process(msg *kafka.Message) error {
+func (C *Consumer) process(ctx context.Context, msg *kafka.Message) error {
 
 	msgkey := string(msg.Key)
 	key, err := strconv.Atoi(msgkey)
@@ -111,7 +117,7 @@ func (C *Consumer) process(msg *kafka.Message) error {
 	}
 	switch key {
 	case constant.Type_Invoice:
-		err = C.invoice(msg)
+		err = C.invoice(ctx, msg)
 		if err != nil {
 			logrus.WithFields(
 				logrus.Fields{
@@ -123,7 +129,7 @@ func (C *Consumer) process(msg *kafka.Message) error {
 		}
 
 	case constant.Type_Withdraw:
-		err = C.withdraw(msg)
+		err = C.withdraw(ctx, msg)
 		if err != nil {
 			logrus.WithFields(
 				logrus.Fields{
@@ -140,7 +146,7 @@ func (C *Consumer) process(msg *kafka.Message) error {
 	return nil
 }
 
-func (C *Consumer) invoice(msg *kafka.Message) error {
+func (C *Consumer) invoice(ctx context.Context, msg *kafka.Message) error {
 	var message model.Transactions
 	err := json.Unmarshal(msg.Value, &message)
 	if err != nil {
@@ -152,9 +158,47 @@ func (C *Consumer) invoice(msg *kafka.Message) error {
 			}).Fatalln(err)
 		return err
 	}
+	var transaction model.Invoice
+	switch message.TypeTransaction {
+	case constant.Type_Invoice:
+		err = json.Unmarshal([]byte(message.Data), &transaction)
+		if err != nil {
+			return err
+		}
+	default:
+		return errors.New("type not invoice message")
+	}
+	_, err = C.UsersStorage.CheckId(ctx, message.WalletID)
+	if err != nil {
+
+		if errors.Is(err, sql.ErrNoRows) {
+			err = nil
+			logrus.WithField("sql: no rows in result set, add users", nil).Warning(err)
+			id, err := C.UsersStorage.AddUser(ctx, model.Users{
+				WalletID:      message.WalletID,
+				CurrencyСode:  transaction.CurrencyСode,
+				ActualBalance: 0,
+				FrozenBalance: 0,
+			})
+			if err != nil {
+				return err
+			}
+			logrus.WithField("Add user with id:", id)
+		}
+	} else {
+		logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "CheckId"}).Fatalln(err)
+		return err
+	}
+	err = C.UsersStorage.AddActualBalanceById(ctx, message.WalletID, transaction.AmountMoney)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"package": "Consumer", "func": "ConsumerStart", "method": "AddAccountById"}).Fatalln(err)
+		return err
+	}
+	//todo cache
+	//todo transaction
 	return nil
 }
-func (C *Consumer) withdraw(msg *kafka.Message) error {
+func (C *Consumer) withdraw(ctx context.Context, msg *kafka.Message) error {
 	var message model.Transactions
 	err := json.Unmarshal(msg.Value, &message)
 	if err != nil {

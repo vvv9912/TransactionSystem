@@ -11,7 +11,8 @@ type Cache struct {
 	m sync.Mutex
 }
 
-func NewCache(c map[string]model.Transactions) *Cache {
+func NewCache() *Cache {
+	var c map[string]model.Transactions
 	return &Cache{c: c}
 }
 func (c *Cache) GetTransaction(key string) (model.Transactions, bool) {
